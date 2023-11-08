@@ -34,6 +34,8 @@ static struct thread *idle_thread;
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;
 
+static void thread_wake_up (struct thread *t, void *aux);
+
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
@@ -137,7 +139,18 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+
+  thread_foreach(thread_wake_up, NULL);
 }
+
+static void thread_wake_up (struct thread *t, void *aux UNUSED){
+  int64_t ticks = t->ticks, start = t->start;
+  if (t->status == THREAD_BLOCKED && timer_elapsed(start) >= ticks)
+  {
+    thread_unblock(t);
+  }
+}
+
 
 /* Prints thread statistics. */
 void
