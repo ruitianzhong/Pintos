@@ -100,6 +100,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->start = -1;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -145,9 +146,11 @@ thread_tick (void)
 
 static void thread_wake_up (struct thread *t, void *aux UNUSED){
   int64_t ticks = t->ticks, start = t->start;
-  if (t->status == THREAD_BLOCKED && timer_elapsed(start) >= ticks)
+  ASSERT(intr_get_level() == INTR_OFF);
+  if (t->status == THREAD_BLOCKED && start >= 0 && timer_elapsed(start) >= ticks)
   {
     thread_unblock(t);
+    t->start = -1;
   }
 }
 
@@ -195,6 +198,7 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  t->start = -1;
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
