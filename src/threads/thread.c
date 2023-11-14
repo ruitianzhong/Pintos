@@ -72,7 +72,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-
+static bool priority_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -214,7 +214,13 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   /* Add to run queue. */
+  enum intr_level oldlevel = intr_disable();
   thread_unblock (t);
+  if (priority > thread_current()->priority)
+  {
+    thread_yield();
+  }
+  intr_set_level(oldlevel);
 
   return tid;
 }
@@ -350,7 +356,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  if (thread_current()->priority == thread_current()->orig_priority)
+  {
+    thread_current()->priority = new_priority;
+    thread_current()->orig_priority = new_priority;
+  }
+  else
+  {
+    thread_current()->orig_priority = new_priority;
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -477,6 +491,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->orig_priority = priority;
   t->magic = THREAD_MAGIC;
   t->start = -1;
   old_level = intr_disable ();
@@ -508,9 +523,21 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  {
+    struct list_elem *e = list_max(&ready_list, priority_less_func, NULL);
+    list_remove(e);
+    return list_entry(e, struct thread, elem);
+  }
 }
 
+static bool priority_less_func(const struct list_elem *a,
+                               const struct list_elem *b,
+                               UNUSED void *aux)
+{
+  struct thread *t1 = list_entry(a, struct thread, elem),
+                *t2 = list_entry(b, struct thread, elem);
+  return t1->priority < t2->priority;
+}
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
 
