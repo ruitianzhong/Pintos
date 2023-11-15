@@ -72,7 +72,6 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static bool priority_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -356,6 +355,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  enum intr_level old_level = intr_disable();
   if (thread_current()->priority == thread_current()->orig_priority)
   {
     thread_current()->priority = new_priority;
@@ -365,13 +365,18 @@ thread_set_priority (int new_priority)
   {
     thread_current()->orig_priority = new_priority;
   }
+  intr_set_level(old_level);
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  enum intr_level old_level = intr_disable();
+  int priority = thread_current()->priority;
+  intr_set_level(old_level);
+  return priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -492,6 +497,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->orig_priority = priority;
+  t->wait = NULL;
   t->magic = THREAD_MAGIC;
   t->start = -1;
   old_level = intr_disable ();
@@ -530,7 +536,7 @@ next_thread_to_run (void)
   }
 }
 
-static bool priority_less_func(const struct list_elem *a,
+bool priority_less_func(const struct list_elem *a,
                                const struct list_elem *b,
                                UNUSED void *aux)
 {

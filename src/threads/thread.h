@@ -90,6 +90,7 @@ struct thread
     int priority;                       /* Priority. */
     int orig_priority;
     struct list_elem allelem;           /* List element for all threads list. */
+    struct thread * wait;
 
    int64_t ticks;
    int64_t start;
@@ -140,5 +141,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
+bool priority_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
 #endif /* threads/thread.h */
