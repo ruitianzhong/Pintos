@@ -90,12 +90,13 @@ struct thread
     int priority;                       /* Priority. */
     int orig_priority;
     struct list_elem allelem;           /* List element for all threads list. */
-    struct thread * wait;
 
    int64_t ticks;
    int64_t start;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    struct lock *wl;
+    struct thread *wait;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
