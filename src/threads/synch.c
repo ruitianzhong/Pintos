@@ -31,7 +31,86 @@
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
 
+void locks_list_add(struct thread *t, struct lock *lock, int priority)
+{
+  struct list *l = &t->locks_list;
+  struct list_elem *e;
+  ASSERT(intr_get_level() == INTR_OFF);
+  if (list_empty(l))
+  {
+    t->orig_priority = t->priority;
+  }
+
+  struct lock_elem *lep = NULL;
+  for (e = list_begin(l); e != list_end(l);
+       e = list_next(e))
+  {
+    lep = list_entry(e, struct lock_elem, elem);
+    if (lep->lock == lock)
+    {
+      lep->cnt++;
+      if (priority > lep->priority)
+      {
+        lep->priority = priority;
+      }
+      if (t->priority < priority)
+      {
+        t->priority = priority;
+      }
+      return;
+    }
+  }
+  lep = malloc(sizeof(struct lock_elem));
+  ASSERT(lep != NULL);
+  lep->cnt = 1;
+  lep->lock = lock;
+  lep->priority = priority;
+  list_push_back(l, &lep->elem);
+  if (t->priority < priority)
+  {
+    t->priority = priority;
+  }
+}
+
+void locks_list_remove(struct thread *t, struct lock *lock)
+{
+  struct list *l = &t->locks_list;
+  struct list_elem *e;
+
+  ASSERT(intr_get_level() == INTR_OFF);
+  struct lock_elem *lep = NULL;
+  int max = -1;
+  bool need_update = false;
+  for (e = list_begin(l); e != list_end(l);)
+  {
+    lep = list_entry(e, struct lock_elem, elem);
+    if (lep->lock == lock)
+    {
+      lep->cnt--;
+      e = list_remove(e);
+      free(lep);
+      if (list_empty(l))
+      {
+        t->priority = t->orig_priority;
+      }
+
+      need_update = true;
+      continue;
+    }
+    else if (lep->priority > max)
+    {
+      max = lep->priority;
+    }
+    e = list_next(e);
+  }
+  if (need_update && max != -1)
+  {
+    t->priority = max;
+  }
+  return;
+}
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -201,21 +280,27 @@ lock_acquire (struct lock *lock)
   enum intr_level oldlevel = intr_disable();
   struct thread *t = lock->holder, *cur = thread_current();
   int count = 0;
+  bool wait = false;
   if (t != NULL && t->priority < cur->priority)
   {
     cur->wait = t;
-    t->wl = lock;
+    locks_list_add(t, lock, cur->priority);
+    t = t->wait;
+    wait = true;
     while (t != NULL && count < 10)
     {
       t->priority = cur->priority;
       t = t->wait;
       count++;
     }
-    ASSERT(count != 10);
+    ASSERT(t == NULL);
   }
 
   sema_down (&lock->semaphore);
-  cur->wait = NULL;
+  if (wait)
+  {
+    cur->wait = NULL;
+  }
   lock->holder = thread_current ();
   intr_set_level(oldlevel);
 }
@@ -251,19 +336,12 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  enum intr_level old_level = intr_disable();
+  struct thread *t = thread_current();
+  locks_list_remove(t, lock);
+  intr_set_level(old_level);
   lock->holder = NULL;
-  sema_up (&lock->semaphore);
-  bool need_yield = (thread_current()->priority > thread_current()->orig_priority);
-  if (lock == thread_current()->wl)
-  {
-    thread_current()->priority = thread_current()->orig_priority;
-    thread_current()->wl = NULL;
-  }
-  // if (need_yield)
-  // {
-    
-    thread_yield();
-  // }
+  sema_up(&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false

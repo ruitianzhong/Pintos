@@ -95,8 +95,9 @@ struct thread
    int64_t start;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct lock *wl;
     struct thread *wait;
+
+    struct list locks_list;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

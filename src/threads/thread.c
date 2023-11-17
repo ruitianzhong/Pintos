@@ -356,10 +356,9 @@ void
 thread_set_priority (int new_priority) 
 {
   enum intr_level old_level = intr_disable();
-  if (thread_current()->priority == thread_current()->orig_priority)
+  if (list_empty(&thread_current()->locks_list))
   {
     thread_current()->priority = new_priority;
-    thread_current()->orig_priority = new_priority;
   }
   else
   {
@@ -497,8 +496,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->orig_priority = priority;
+  list_init(&t->locks_list);
   t->wait = NULL;
-  t->wl = NULL;
   t->magic = THREAD_MAGIC;
   t->start = -1;
   old_level = intr_disable ();
