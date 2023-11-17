@@ -199,7 +199,10 @@ sema_up (struct semaphore *sema)
   }
   sema->value++;
   intr_set_level (old_level);
-  thread_yield();
+  if (!thread_mlfqs)
+  {
+    thread_yield();
+  }
 }
 
 static void sema_test_helper (void *sema_);
@@ -277,29 +280,32 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  enum intr_level oldlevel = intr_disable();
-  struct thread *t = lock->holder, *cur = thread_current();
-  int count = 0;
   bool wait = false;
-  if (t != NULL && t->priority < cur->priority)
+  enum intr_level oldlevel = intr_disable();
+  if (!thread_mlfqs)
   {
-    cur->wait = t;
-    locks_list_add(t, lock, cur->priority);
-    t = t->wait;
-    wait = true;
-    while (t != NULL && count < 10)
+    struct thread *t = lock->holder, *cur = thread_current();
+    int count = 0;
+    if (t != NULL && t->priority < cur->priority)
     {
-      t->priority = cur->priority;
+      cur->wait = t;
+      locks_list_add(t, lock, cur->priority);
       t = t->wait;
-      count++;
+      wait = true;
+      while (t != NULL && count < 10)
+      {
+        t->priority = cur->priority;
+        t = t->wait;
+        count++;
+      }
+      ASSERT(t == NULL);
     }
-    ASSERT(t == NULL);
   }
 
   sema_down (&lock->semaphore);
-  if (wait)
+  if (!thread_mlfqs && wait)
   {
-    cur->wait = NULL;
+    thread_current()->wait = NULL;
   }
   lock->holder = thread_current ();
   intr_set_level(oldlevel);
@@ -338,7 +344,10 @@ lock_release (struct lock *lock)
 
   enum intr_level old_level = intr_disable();
   struct thread *t = thread_current();
-  locks_list_remove(t, lock);
+  if(!thread_mlfqs)
+  {
+    locks_list_remove(t, lock);
+  }
   intr_set_level(old_level);
   lock->holder = NULL;
   sema_up(&lock->semaphore);

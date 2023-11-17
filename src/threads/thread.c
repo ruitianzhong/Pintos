@@ -355,6 +355,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  if (thread_mlfqs)
+  {
+    return;
+  }
   enum intr_level old_level = intr_disable();
   if (list_empty(&thread_current()->locks_list))
   {
@@ -494,9 +498,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
-  t->orig_priority = priority;
-  list_init(&t->locks_list);
+  if (!thread_mlfqs)
+  {
+    t->priority = priority;
+    t->orig_priority = priority;
+    list_init(&t->locks_list);
+  }
+
   t->wait = NULL;
   t->magic = THREAD_MAGIC;
   t->start = -1;
