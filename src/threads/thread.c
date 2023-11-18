@@ -248,8 +248,6 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
-
-  thread_foreach(thread_wake_up, NULL);
 }
 
 static void thread_wake_up (struct thread *t, void *aux UNUSED){

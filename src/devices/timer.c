@@ -30,6 +30,19 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+struct list timer_list;
+static bool timer_less(const struct list_elem *a,
+                       const struct list_elem *b,
+                       void *aux UNUSED)
+{
+  struct thread *t1 = list_entry(a, struct thread, elem),
+                *t2 = list_entry(b, struct thread, elem);
+  ASSERT(t1->start != -1 && t2->start != -1);
+  int x = t1->start + t1->ticks,
+      y = t2->start + t2->ticks;
+  return x < y;
+}
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +50,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init(&timer_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -95,6 +109,7 @@ timer_sleep (int64_t ticks)
   old_level = intr_disable();
   thread_current()->ticks = ticks;
   thread_current()->start = start;
+  list_insert_ordered(&timer_list, &thread_current()->elem, timer_less, NULL);
   thread_block();
   intr_set_level(old_level);
 }
@@ -174,6 +189,20 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  while (!list_empty(&timer_list))
+  {
+    struct list_elem *e = list_begin(&timer_list);
+    struct thread *t = list_entry(e, struct thread, elem);
+    if (timer_elapsed(t->start) >= t->ticks)
+    {
+      list_pop_front(&timer_list);
+      thread_unblock(t);
+    }
+    else
+    {
+      break;
+    }
+  }
   thread_tick ();
 }
 
